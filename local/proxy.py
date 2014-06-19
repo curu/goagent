@@ -914,6 +914,20 @@ class AuthFilter(BaseProxyHandlerFilter):
                        'Connection': 'keep-alive'}
             return [handler.MOCK, 407, headers, '']
 
+class URLDenyFilter(BaseProxyHandlerFilter):
+    """URL Deny filter, deny some URL access"""
+
+    def __init__(self, deny_regex_list):
+        self.deny_regex_list = deny_regex_list
+
+    def filter(self, handler):
+        if self.deny_regex_list:
+            url_path = urlparse.urlsplit(handler.path).path
+            for p in self.deny_regex_list:
+                if re.match(p, url_path, re.I):
+                    logging.warning("URL '%s' access denied by pattern '%s'" % (handler.path, p))
+                    return [handler.MOCK, 403, {}, 'Proxy denied URL access\r\n']
+        return None
 
 class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """SimpleProxyHandler for GoAgent 3.x"""
@@ -2065,6 +2079,7 @@ class Common(object):
 
         self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
+        self.DENY_PATTERN = self.CONFIG.get('acl', 'deny_pattern').strip().split() if self.CONFIG.has_option('acl', 'deny_pattern') else ''
 
     def extend_iplist(self, iplist_name, hosts):
         logging.info('extend_iplist start for hosts=%s', hosts)
@@ -3275,6 +3290,8 @@ def pre_start():
         PHPProxyHandler.handler_filters.insert(0, UserAgentFilter(common.USERAGENT_STRING))
     if common.LISTEN_USERNAME:
         GAEProxyHandler.handler_filters.insert(0, AuthFilter(common.LISTEN_USERNAME, common.LISTEN_PASSWORD))
+    if common.DENY_PATTERN:
+        GAEProxyHandler.handler_filters.insert(0, URLDenyFilter(common.DENY_PATTERN))
 
 
 def main():
